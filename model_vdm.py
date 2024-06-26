@@ -37,11 +37,11 @@ class VDMConfig:
   gamma_max: float
 
   # 评价模型的配置
-  sm_n_timesteps: int
+  sm_n_timesteps: int # 时间步长的数量
   sm_n_embd: int ## 嵌入维度
   sm_n_layer: int #下采样层的数量
-  sm_pdrop: float
-  sm_kernel_init: Callable = jax.nn.initializers.normal(0.02)
+  sm_pdrop: float # dropout的强度
+  sm_kernel_init: Callable = jax.nn.initializers.normal(0.02) # 核 初始化
 
 
 ######### Latent VDM model #########
@@ -78,8 +78,8 @@ class VDM(nn.Module):
       raise Exception("Unknown self.var_model")
 
   def __call__(self, images, conditioning, deterministic: bool = True):
-    '''
-    根据输入图像计算模型的损失函数
+    '''根据输入图像计算模型的损失函数
+
     Args:
       images: 图像数据 一般是一个批量
       conditioning: 条件信息，这可以是额外的输入数据，用于条件生成任务，比如文本描述或其他条件变量，以指导模型生成过程。
@@ -266,7 +266,7 @@ class EncDec(nn.Module):
     return 2 * ((x+.5) / self.config.vocab_size) - 1
 
   def decode(self, z, g_0):
-    ''' 计算在给定不同潜在变量 z 的情况下，每个干净数据点 x
+    ''' 计算在给定不同潜在变量 z 的情况下，每个干净数据点 x的对数概率分布
 
     通过输入的当前参数代表的当前信噪比以及对应的潜在变量，具体来说
     对于干净数据的分布就是用当前潜在变量和干净数据可能取值之间的差异描述的，
