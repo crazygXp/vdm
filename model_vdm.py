@@ -57,6 +57,9 @@ class VDMOutput:
 
 
 class VDM(nn.Module):
+  '''根据下面的所有方法 计算出VDM的三个损失
+
+  '''
   config: VDMConfig
 
   def setup(self):
@@ -263,8 +266,8 @@ class EncDec(nn.Module):
     return 2 * ((x+.5) / self.config.vocab_size) - 1
 
   def decode(self, z, g_0):
-    '''
-    计算在给定不同潜在变量 z 的情况下，每个干净数据点 x
+    ''' 计算在给定不同潜在变量 z 的情况下，每个干净数据点 x
+
     通过输入的当前参数代表的当前信噪比以及对应的潜在变量，具体来说
     对于干净数据的分布就是用当前潜在变量和干净数据可能取值之间的差异描述的，
     只不过通过信噪比动态的调控这个分布的样子，是宽还是窄，对应干净数据的信心
@@ -320,7 +323,8 @@ class EncDec(nn.Module):
     return logprobs
 
   def logprob(self, x, z, g_0):
-    '''
+    '''计算出正确干净数据的分布
+
     换句话说，logprob 方法是用来评估模型对于实际观测数据的拟合度，即模型认为观测到的数据点有多“可能”。
     logprob 方法：它使用的是 decode 方法生成的分布，但目的不同。
     logprob 方法通过 one-hot 编码的方式，从 decode 方法提供的概率“地图”中找出实际观测到的数据点 x 所对应的概率，
@@ -515,7 +519,7 @@ def get_timestep_embedding(timesteps, embedding_dim: int, dtype=jnp.float32):
   return emb
 
 
-######### 三种 噪声计划 用来控制扩散过程中的信噪比 #########
+######### 三种 噪声计划 用来控制扩散过程中的噪声水平/信噪比 #########
 
 class NoiseSchedule_Scalar(nn.Module):
   config: VDMConfig
@@ -643,7 +647,7 @@ class DenseMonotone(nn.Dense):
 
 
 ######### ResNet block #########
-
+# 下面的方法都是用来处理特征 用作计算预测噪声
 class ResnetBlock(nn.Module):
   """卷积残差块包含两个卷积层,完成特征提取从而在噪声预测模型中使用"""
   #   输入的是原始特征图，返回的是经过处理的特征图

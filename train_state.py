@@ -30,8 +30,11 @@ import optax
 
 
 class TrainState(struct.PyTreeNode):
-  """Simple train state for the common case with a single Optax optimizer.
 
+  """针对只有一个 Optax 优化器的常见情况的简单训练状态
+
+   创建训练实例和更新训练实例的参数,这两个方法共同支持了机器学习模型训练的完整流程：
+   首先是初始化训练状态，然后是迭代地更新这些状态以优化模型性能
   Synopsis:
 
     state = TrainState.create(
@@ -43,54 +46,58 @@ class TrainState(struct.PyTreeNode):
       grads = grad_fn(state.params, batch)
       state = state.apply_gradients(grads=grads)
 
-  Note that you can easily extend this dataclass by subclassing it for storing
-  additional data (e.g. additional variable collections).
+  请注意，你可以通过子类化这个数据类来轻松扩展它，用于存储额外的数据（例如额外的变量集合）。).
+  对于更特殊的用例（例如多个优化器），最好是fork该类并进行修改
 
-  For more exotic usecases (e.g. multiple optimizers) it's probably best to
-  fork the class and modify it.
-
-  Attributes:
-    step: Counter starts at 0 and is incremented by every call to
-      `.apply_gradients()`.
-    apply_fn: Usually set to `model.apply()`. Kept in this dataclass for
-      convenience to have a shorter params list for the `train_step()` function
-      in your training loop.
-    tx: An Optax gradient transformation.
-    opt_state: The state for `tx`.
+  属性:
+    step: 计数器从0开始，每次调用 .apply_gradients() 时递增。
+    apply_fn:通常设置为 model.apply()。为了在训练循环中的 train_step() 函数中简化参数列表而保留在这个数据类中。
+    tx:一个 Optax 梯度变换。
+    opt_state: tx 的状态
   """
-  step: int
-  params: core.FrozenDict[str, Any]
-  ema_params: core.FrozenDict[str, Any]
-  opt_state: optax.OptState
+  # 类属性
+  step: int #训练步数
+  params: core.FrozenDict[str, Any] #不可变的字典core.FrozenDict 存储模型参数
+  ema_params: core.FrozenDict[str, Any] # 一个不可变的字典，存储指数移动平均参数，用于平滑模型参数。
+  opt_state: optax.OptState # 存储优化器状态
   tx_fn: Callable[[float], optax.GradientTransformation] = struct.field(
-      pytree_node=False)
-  apply_fn: Callable = struct.field(pytree_node=False)
+      pytree_node=False) # 返回一个 optax.GradientTransformation 对象通常用于优化过程中，比如计算梯度更新。
+  # optax.GradientTransformation 是 Optax 库中用于定义如何将梯度转换为参数更新的接口。
+  # 简单来说就是 根据传入的梯度和当前参数，计算出参数的更新值，并返回新的参数和更新后的优化器状态。
+  apply_fn: Callable = struct.field(pytree_node=False) # 模型的前向传播函数。
 
   def apply_gradients(self, *, grads, lr, ema_rate, **kwargs):
-    """Updates `step`, `params`, `opt_state` and `**kwargs` in return value.
+    """函数更新返回值中的 step、params、opt_state 和 **kwargs
 
-    Note that internally this function calls `.tx.update()` followed by a call
-    to `optax.apply_updates()` to update `params` and `opt_state`.
+    在给定梯度 grads 的情况下更新模型参数、优化器状态，并应用指数移动平均（EMA）到参数上
+    请注意，该函数在内部首先调用 .tx.update()，然后调用 optax.apply_updates() 来更新 params 和 opt_state。
 
     Args:
-      grads: Gradients that have the same pytree structure as `.params`.
-      **kwargs: Additional dataclass attributes that should be `.replace()`-ed.
+      grads: 梯度，其结构与 .params 相同。
+      **kwargs: 应该通过 .replace() 替换的额外数据类属性。
 
     Returns:
-      An updated instance of `self` with `step` incremented by one, `params`
-      and `opt_state` updated by applying `grads`, and additional attributes
-      replaced as specified by `kwargs`.
+      更新后的 self 实例，其中 step 增加了一，params 和 opt_state 通过应用 grads 进行了更新，
+      并且额外的属性按照 kwargs 中指定的进行了替换。
     """
-    tx = self.tx_fn(lr)
+    tx = self.tx_fn(lr) #这个对象 tx 包含了执行梯度更新所需的所有信息和方法，特别是 update 方法，它将被用来应用梯度下降步骤。
+    '''
+    GradientTransformation 对象。这个对象包含了两个主要的方法：
+    init：初始化优化器状态。这通常在训练开始之前调用一次。   
+    update：根据传入的梯度和当前参数，计算出参数的更新值，并返回新的参数和更新后的优化器状态。
+    这里的tx就是GradientTransformation 对象。
+    '''
+    # 计算更新值
     updates, new_opt_state = tx.update(
         grads, self.opt_state, self.params)
+    # 应用更新值
     new_params = optax.apply_updates(self.params, updates)
     new_ema_params = jax.tree_multimap(
         lambda x, y: x + (1. - ema_rate) * (y - x),
         self.ema_params,
         new_params,
     )
-
+    # 创建当前数据类的一个新的实例，同时可以替换掉其中的一些字段的值
     return self.replace(
         step=self.step + 1,
         params=new_params,
@@ -101,11 +108,22 @@ class TrainState(struct.PyTreeNode):
 
   @classmethod
   def create(_class, *, apply_fn, variables, optax_optimizer, **kwargs):
-    """Creates a new instance with `step=0` and initialized `opt_state`."""
+
+    """创建一个新实例，其中 step 设为 0，并初始化 opt_state."""
+    '''
+    Args:
+    _class：这是一个指向 TrainState 类的引用，允许在方法内部创建类的实例。
+    apply_fn：模型的前向传播函数，通常设置为模型的 .apply() 方法。
+    variables：一个包含模型参数的字典，键为 "params"。
+    optax_optimizer：一个函数，用于创建 optax.GradientTransformation 对象，这个对象定义了优化算法。
+    **kwargs：接受任意数量的额外关键字参数，这些参数将被传递给 _class 的构造函数。
+    
+    Returns: 一个新创建的类实例
+    '''
     # _class is the TrainState class
     params = variables["params"]
-    opt_state = optax_optimizer(1.).init(params)
-    ema_params = copy.deepcopy(params)
+    opt_state = optax_optimizer(1.).init(params)  #初始化优化器状态
+    ema_params = copy.deepcopy(params) #初始化ema
     return _class(
         step=0,
         apply_fn=apply_fn,
